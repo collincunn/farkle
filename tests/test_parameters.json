@@ -145,6 +145,12 @@
             "description": "Triplets ones and fives"
         },
         {
+            "roll": [1,1,2,2,5,5],
+            "score": 1500,
+            "keep": [1,1,1,1,1,1],
+            "description": "Three pair"
+        },
+        {
             "roll": [6,6,6,2,3,4],
             "score": 600,
             "keep": [1,1,1,0,0,0],
