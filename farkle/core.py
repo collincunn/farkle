@@ -189,7 +189,7 @@ class RollStruct:
                 keep_none = np.array([False] * self.shape)
                 return update_with_scoring_singles(roll, 0, keep_none)
 
-        raise RuntimeError(
+        raise RuntimeError(  # pragma: no cover
             "Unexpected error encountered during scoring! "
             "Unable to score RollStruct."
         )
@@ -299,14 +299,17 @@ class Turn:
         return (self.frozen == 0).sum()
 
     @TurnState.ROLL.assert_state
-    def roll(self) -> None:
+    def roll(self, fixed: RollStruct | None = None) -> None:
         """Roll the dice!
 
         Rolls all un-frozen dice and updates state to ``SELECTION`` state. Can
         only be run when in ``ROLL`` state. Updates ``curr_`` prefixed attributes.
+
+        Args:
+            fixed: Pass a preset roll to the roll for testing.
         """
         try:
-            self.curr_roll = RollStruct.random(self.open_spots)
+            self.curr_roll = fixed or RollStruct.random(self.open_spots)
             self.curr_value, self.curr_scoring_mask = self.curr_roll.score()
 
             if self.curr_value == 0:
@@ -334,7 +337,7 @@ class Turn:
             mask: Optional boolean mask of which dice to keep. Defaults to
             scoring dice captured in ``RollStruct.score``.
         """
-        mask = mask or self.curr_scoring_mask
+        mask = mask if mask is not None else self.curr_scoring_mask
         if np.any(mask & ~self.curr_scoring_mask):
             raise ValueError("Tried to select non-scoring di(c)e")
         elif mask.size != self.open_spots:
@@ -383,7 +386,7 @@ class Turn:
             mask: The scoring subset of the mask.
         """
         roll = self.curr_roll
-        if mask:
+        if mask is not None:
             roll = self.curr_roll.subroll(mask)
         value, keep = roll.score()
         return value, keep
@@ -429,7 +432,7 @@ class Game:
     def start(self) -> Generator[Turn, None, None]:
         winning_id = -1
         for player_id in self.turn_cycler:
-            if player_id == winning_id:
+            if player_id == winning_id:  # pragma: no cover
                 return
 
             self._logger.debug(f"Starting turn for {player_id=}")
@@ -447,7 +450,7 @@ class Game:
             self.player_score_map[player_id] += turn.value
 
             # If someone reaches 10,000 everyone gets one last turn to try to beat it
-            if self.player_score_map[player_id] > Game.WINNING_SCORE:
+            if self.player_score_map[player_id] >= Game.WINNING_SCORE:
                 winning_id = player_id
 
             # Every complete loop, we log the current scores to DEBUG
