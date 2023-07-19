@@ -4,6 +4,7 @@ runs:
   steps:
     - name: Test
       run: make test
+      shell: bash -el {0}
 
     - name: Publish test results
       uses: actions/upload-artifact@v3
