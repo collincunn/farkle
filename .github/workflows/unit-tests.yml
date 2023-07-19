@@ -23,6 +23,5 @@ jobs:
       - name: Lint with ruff
         run: |
           make lint
-      - name: Test with pytest
-        run: |
-          make test
+      - name: Test
+        uses: ./.github/actions/run-tests

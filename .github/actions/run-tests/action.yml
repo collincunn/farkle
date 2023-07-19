@@ -3,8 +3,7 @@ runs:
   using: composite
   steps:
     - name: Test
-      run: ci/run_tests.sh
-      shell: bash -el {0}
+      run: make test
 
     - name: Publish test results
       uses: actions/upload-artifact@v3
@@ -22,6 +21,6 @@ runs:
       uses: codecov/codecov-action@v3
       with:
         flags: unittests
-        name: codecov-pandas
+        name: codecov-farkle
         fail_ci_if_error: false
       if: failure()
