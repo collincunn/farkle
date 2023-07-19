@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from enum import Enum, auto
 from functools import wraps
 from itertools import cycle
+import logging
 from typing import (
-    ParamSpec, TypeVar, Callable, Concatenate, Final, Generator,
+    Callable,
+    Concatenate,
+    Final,
+    Generator,
+    ParamSpec,
+    TypeVar,
 )
 
 import numpy as np
@@ -84,7 +89,7 @@ class RollStruct:
         roll = np.random.randint(1, 7, size=shape)
         return cls.fixed(roll)
 
-    def subroll(self, mask: NDArray[bool]) -> RollStruct:
+    def subroll(self, mask: NDArray[np.bool_]) -> RollStruct:
         """Create a new object from a subset of this object."""
         return RollStruct.fixed(self.roll[mask])
 
@@ -101,10 +106,10 @@ class RollStruct:
         """
 
         def update_with_scoring_singles(
-            roll: NDArray[np.int_],
+            roll: RollArrayType,
             value: int,
             keep: MaskType,
-        ) -> tuple[int, np.ndarray]:
+        ) -> tuple[int, MaskType]:
             """Update value, mask pair based on ones and fives.
 
             Helper function that takes an existing score and update with the
@@ -183,19 +188,21 @@ class RollStruct:
                 """Scoring numbers: Ones and fives"""
                 keep_none = np.array([False] * self.shape)
                 return update_with_scoring_singles(roll, 0, keep_none)
-            case _:
-                raise RuntimeError(
-                    "Unexpected error encountered during scoring! "
-                    "Unable to score RollStruct."
-                )
+
+        raise RuntimeError(
+            "Unexpected error encountered during scoring! "
+            "Unable to score RollStruct."
+        )
 
 
 class TurnStateError(RuntimeError):
     """Turn in wrong state for requested action."""
 
 
-_Param = ParamSpec("Param")
-_RetType = TypeVar("RetType")
+_Param = ParamSpec(
+    "_Param",
+)
+_RetType = TypeVar("_RetType")
 
 
 class TurnState(Enum):
@@ -220,8 +227,8 @@ class TurnState(Enum):
         return self in (TurnState.FARKLE, TurnState.HOLD, TurnState.ERROR)
 
     def assert_state(
-        self, func: Callable[_Param, _RetType]
-    ) -> Callable[Concatenate[str, _Param], _RetType]:
+        self, func: Callable[Concatenate[Turn, _Param], _RetType]
+    ) -> Callable[Concatenate[Turn, _Param], _RetType]:
         """Ensure ``Turn`` has set state.
 
         Raises:
@@ -322,9 +329,9 @@ class Turn:
         decides which dice to hold and which to make available for re-rolling.
         The object must be in the ``SELECTION`` state to execute, while doing
         so puts the object in the ``ROLL`` phase.
-        
+
         Args:
-            mask: Optional boolean mask of which dice to keep. Defaults to 
+            mask: Optional boolean mask of which dice to keep. Defaults to
             scoring dice captured in ``RollStruct.score``.
         """
         mask = mask or self.curr_scoring_mask
@@ -392,18 +399,18 @@ class Turn:
         self.value += self.curr_value
         self.state = TurnState.HOLD
 
-        
+
 class Game:
     """Farkle game object.
-    
-    Wrapper for Farkle internals. Manages players, their turns, and scoring. 
-    Scores are accumulated on a turn basis until one player reaches 10,000. 
-    At this point, each player (besides this one) gets one final shot at 
+
+    Wrapper for Farkle internals. Manages players, their turns, and scoring.
+    Scores are accumulated on a turn basis until one player reaches 10,000.
+    At this point, each player (besides this one) gets one final shot at
     beating them.
-    
+
     Args:
         num_players: Number of players to cycle through
-        
+
     Attributes:
         turn_cycler: Iterates through player ids.
         player_score_map: Stores player scores by id.
@@ -411,15 +418,14 @@ class Game:
 
     WINNING_SCORE: Final = 10_000
     """Threshold at which the end-game begins."""
-    
+
     def __init__(self, num_players: int) -> None:
         player_range = range(num_players)
         self.num_players = num_players
         self.turn_cycler: cycle = cycle(player_range)
-        self.player_score_map: dict[int] = {i: 0 for i in player_range}
+        self.player_score_map: dict[int, int] = {i: 0 for i in player_range}
         self._logger = logging.getLogger(__name__)
-        
-    
+
     def start(self) -> Generator[Turn, None, None]:
         winning_id = -1
         for player_id in self.turn_cycler:
@@ -433,16 +439,17 @@ class Game:
 
             if not turn.state.is_terminal():
                 self._logger.critical(
-                    'Turn was not over before starting next turn. '
-                    'Force ending turn. Current roll points may be missed!')
+                    "Turn was not over before starting next turn. "
+                    "Force ending turn. Current roll points may be missed!"
+                )
                 turn.state = TurnState.ERROR
 
             self.player_score_map[player_id] += turn.value
-            
+
             # If someone reaches 10,000 everyone gets one last turn to try to beat it
             if self.player_score_map[player_id] > Game.WINNING_SCORE:
                 winning_id = player_id
-            
+
             # Every complete loop, we log the current scores to DEBUG
             if player_id == self.num_players - 1:
-                self._logger.debug(f'Current scores: {self.player_score_map}')
+                self._logger.debug(f"Current scores: {self.player_score_map}")

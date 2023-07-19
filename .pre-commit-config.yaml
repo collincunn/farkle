@@ -1,0 +1,55 @@
+minimum_pre_commit_version: 2.9.2
+repos:
+-   repo: https://github.com/psf/black
+    rev: 23.7.0
+    hooks:
+    -   id: black
+
+-   repo: https://github.com/codespell-project/codespell
+    rev: v2.2.5
+    hooks:
+    -   id: codespell
+        types_or: [python, rst, markdown]
+        additional_dependencies: [tomli]
+
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.0.277
+    hooks:
+    -   id: ruff
+        args: [--exit-non-zero-on-fix]
+
+-   repo: https://github.com/MarcoGorelli/absolufy-imports
+    rev: v0.3.1
+    hooks:
+    -   id: absolufy-imports
+        exclude: ^doc/
+
+-   repo: https://github.com/PyCQA/isort
+    rev: 5.12.0
+    hooks:
+    -   id: isort
+
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.3.0
+    hooks:
+    -   id: check-ast
+    -   id: check-case-conflict
+    -   id: check-toml
+    -   id: check-xml
+    -   id: check-yaml
+    -   id: mixed-line-ending
+        args: [--fix=auto]
+    -   id: end-of-file-fixer
+        exclude: \.txt$
+    -   id: trailing-whitespace
+
+# We use local installation for this
+-   repo: local
+    hooks:
+    -   id: mypy
+        name: mypy
+        entry: mypy farkle
+        language: system
+        pass_filenames: false
+        types: [python]
+        stages: [manual]
