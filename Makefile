@@ -18,7 +18,6 @@ install:prerequisites
 	pip3 install -U --upgrade-strategy eager .
 
 develop:prerequisites
-	pip3 install -U --upgrade-strategy eager tox
 	pip3 install -U --upgrade-strategy eager -e '.[dev]'
 
 lint:
@@ -29,4 +28,4 @@ package:prerequisites
 	pyproject-build --no-isolation
 
 test:
-	tox --recreate --parallel auto
+	python -m pytest tests/test_core.py --cov=farkle --cov-report=xml --cov-config=pyproject.toml
