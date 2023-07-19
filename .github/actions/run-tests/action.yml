@@ -23,5 +23,5 @@ runs:
       with:
         flags: unittests
         name: codecov-farkle
-        fail_ci_if_error: false
+        fail_ci_if_error: true
       if: failure()
