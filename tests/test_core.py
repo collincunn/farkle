@@ -97,7 +97,7 @@ def test_turn_state_assert():
         state: TurnState
 
     def needs_state(turn) -> None:
-        return
+        raise NotImplementedError()
 
     turn = FakeTurn()
     turn.state = TurnState.ROLL
