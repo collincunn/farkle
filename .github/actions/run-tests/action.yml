@@ -6,16 +6,6 @@ runs:
       run: make test
       shell: bash -el {0}
 
-    - name: Publish test results
-      uses: actions/upload-artifact@v3
-      with:
-        name: Test results
-        path: test-data.xml
-
-    - name: Report Coverage
-      run: coverage report -m
-      shell: bash -el {0}
-
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
