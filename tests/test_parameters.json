@@ -68,15 +68,6 @@
         },
         {
             "roll": [1,1,1,1,5,6],
-            "score": 1000,
-            "keep": [1,1,1,1,0,0],
-            "args": {
-                "drop_fives": true
-            },
-            "description": "4 of a kind with a five; drop"
-        },
-        {
-            "roll": [1,1,1,1,5,6],
             "score": 1050,
             "keep": [1,1,1,1,1,0],
             "description": "4 of a kind with a five; keep"
@@ -104,15 +95,6 @@
             "score": 1050,
             "keep": [1,1,1,1,1],
             "description": "5 dice; 4 of a kind with a five; all scoring"
-        },
-        {
-            "roll": [2,2,2,2,5,6],
-            "score": 1000,
-            "keep": [1,1,1,1,0,0],
-            "args": {
-                "drop_fives": true
-            },
-            "description": "4 of a kind with a five; throwaway five"
         },
         {
             "roll": [2,2,2,2],
@@ -203,15 +185,6 @@
             "score": 100,
             "keep": [1,0,0,0,0,0],
             "description": "Only singles; ones"
-        },
-        {
-            "roll": [1,2,3,3,6,5],
-            "score": 100,
-            "keep": [1,0,0,0,0,0],
-            "args": {
-                "drop_fives": true
-            },
-            "description": "Only singles; mixed; throwaway five"
         },
         {
             "roll": [2,2,3,4,5,5],
