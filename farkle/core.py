@@ -61,11 +61,11 @@ class RollStruct:
 
         if roll.size == 0:
             raise ValueError("Roll is empty")
-        elif roll.shape[0] > 6:
+        if roll.shape[0] > 6:
             raise ValueError("Too many dice!")
-        elif roll.ndim != 1:
+        if roll.ndim != 1:
             raise ValueError("Should be one-dimensional")
-        elif roll.min() < 1 or roll.max() > 6:
+        if roll.min() < 1 or roll.max() > 6:
             raise ValueError("Values should be in [1,6]")
 
         unique, counts = np.unique(roll, return_counts=True)
@@ -137,10 +137,10 @@ class RollStruct:
             value += 50 * five_count
             if one_count + five_count == 0:
                 return value, keep
-            else:
-                keep |= is_one
-                keep |= is_five
-                return value, keep
+
+            keep |= is_one
+            keep |= is_five
+            return value, keep
 
         match self:
             case RollStruct(roll, [6], scoring_n):
@@ -340,7 +340,7 @@ class Turn:
         mask = mask if mask is not None else self.curr_scoring_mask
         if np.any(mask & ~self.curr_scoring_mask):
             raise ValueError("Tried to select non-scoring di(c)e")
-        elif mask.size != self.open_spots:
+        if mask.size != self.open_spots:
             raise ValueError("Mask size must be same as number of open spots")
         try:
             self._logger.debug(f"Selecting: {mask=} from {self.curr_roll=}")
