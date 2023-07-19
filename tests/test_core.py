@@ -28,7 +28,7 @@ def pytest_generate_tests(metafunc):
 def load_tests(fixture):
     """Pull parameters file and deserialize."""
     with open(parameters_file) as f:
-        test_data = json.loads(f.read())
+        test_data = json.loads(f)
     test_data_key = fixture.removeprefix("data__")
     return test_data[test_data_key]
 
