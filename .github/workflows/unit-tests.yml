@@ -29,19 +29,17 @@ jobs:
         with:
           name: Test results
           path: test-data.xml
-        if: failure()
 
       - name: Report Coverage
         run: coverage report -m
         shell: bash -el {0}
-        if: failure()
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
           flags: unittests
           name: codecov-farkle
           fail_ci_if_error: true
           verbose: true
-        if: failure()
