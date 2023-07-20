@@ -88,6 +88,10 @@ def test_strat_det_bot_simple(env_state):
     assert not action.hold
 
 
+def test_action_eq():
+    assert not Action(None, False) == "action"
+
+
 def test_strat_det_bot_fives_logic(env_state):
     bot = StrategicDeterministicBotPlayer(5000)
 
