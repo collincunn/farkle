@@ -28,4 +28,4 @@ package:prerequisites
 	pyproject-build --no-isolation
 
 test:
-	python -m pytest tests/test_core.py --cov=farkle --cov-report=xml --cov-config=pyproject.toml
+	python -m pytest tests/ --cov=farkle --cov-report=xml --cov-config=pyproject.toml

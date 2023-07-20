@@ -39,7 +39,7 @@ class RollStruct:
         shape: The number of dice that were rolled. Must be in ``[1, 6]``.
     """
 
-    roll: RollArrayType
+    roll_array: RollArrayType
     counts: list[int]
     last_n: int
     shape: int
@@ -91,7 +91,7 @@ class RollStruct:
 
     def subroll(self, mask: NDArray[np.bool_]) -> RollStruct:
         """Create a new object from a subset of this object."""
-        return RollStruct.fixed(self.roll[mask])
+        return RollStruct.fixed(self.roll_array[mask])
 
     def score(self) -> tuple[int, MaskType]:
         """Calculate score and mask for a given ``RollStruct``.
@@ -199,9 +199,7 @@ class TurnStateError(RuntimeError):
     """Turn in wrong state for requested action."""
 
 
-_Param = ParamSpec(
-    "_Param",
-)
+_Param = ParamSpec("_Param")
 _RetType = TypeVar("_RetType")
 
 
@@ -258,6 +256,12 @@ class Turn:
     information as attributes rather than returning an arbitrary set of
     information.
 
+    Args:
+        game: Optional parameter to track the game this turn is a part of. This
+            is managed programmatically. Do not update directly.
+        player_id: Optional Player ID this turn belongs to. This is managed
+            programmatically. Do not update directly.
+
     Attributes:
         frozen (array of int): Which dice have been scored, added to ``value``,
             then put aside.
@@ -274,7 +278,9 @@ class Turn:
     curr_value: int
     curr_scoring_mask: MaskType
 
-    def __init__(self) -> None:
+    def __init__(self, game: Game | None = None, player_id: int | None = None) -> None:
+        self.game = game
+        self.player_id = player_id
         self.frozen: RollArrayType = np.zeros((6,), dtype=np.uint8)
         self.value: int = 0
         self._state: TurnState = TurnState.ROLL
@@ -351,7 +357,7 @@ class Turn:
             if np.all(mask):
                 self._refresh_frozen()
             else:
-                kept_from_roll = masked_roll.roll
+                kept_from_roll = masked_roll.roll_array
                 open_spots = ~self.frozen.astype(bool)
                 open_spots[open_spots] = open_spots[open_spots] & mask
                 self.frozen[open_spots] = kept_from_roll
@@ -436,7 +442,7 @@ class Game:
                 return
 
             self._logger.debug(f"Starting turn for {player_id=}")
-            turn = Turn()
+            turn = Turn(game=self, player_id=player_id)
             yield turn
             self._logger.debug(f"Closing turn for {player_id=}")
 
