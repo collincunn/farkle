@@ -157,7 +157,7 @@ def test_turn_continue_after_done():
         turn.state = TurnState.ROLL
 
 
-def test_turn_borken_mask():
+def test_turn_broken_mask():
     turn = Turn()
     rs1 = RollStruct.fixed([1, 5, 3, 3, 4, 4])
     turn.roll(rs1)
