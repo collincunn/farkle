@@ -71,7 +71,7 @@ class EnvironmentState:
         if game and player_id is not None:
             score_prior_to_turn = game.player_score_map[player_id]
             max_other_player_score = max(
-                [v for id, v in game.player_score_map.items() if id != player_id]
+                v for id, v in game.player_score_map.items() if id != player_id
             )
         else:
             score_prior_to_turn = max_other_player_score = 0
@@ -116,6 +116,8 @@ class Action:
                 and np.array_equal(self.mask, other.mask)
             )
         return False
+
+    __hash__ = None
 
 
 class BotPlayer(metaclass=ABCMeta):
