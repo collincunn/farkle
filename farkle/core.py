@@ -310,7 +310,7 @@ class FixedRollFactory(BaseRollFactory):
         """Fix the upcoming roll."""
         self.next_roll = roll
 
-    def __call__(self, open_spots: int) -> Roll:
+    def __call__(self, _: int) -> Roll:
         return self.next_roll
 
 
