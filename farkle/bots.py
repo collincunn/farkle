@@ -1,148 +1,15 @@
 from __future__ import annotations
 
-from abc import ABCMeta, abstractmethod
-from dataclasses import dataclass, fields
-from typing import TYPE_CHECKING, Any
-
 import numpy as np
 
-from farkle.core import TurnState, TurnStateError
-
-if TYPE_CHECKING:
-    from farkle.core import (
-        MaskType,
-        RollArrayType,
-        RollStruct,
-        Turn,
-    )
+from farkle.core import (
+    Action,
+    BasePlayer,
+    EnvironmentState,
+)
 
 
-def _dataclass_asdict_shallow(obj: EnvironmentState) -> dict:
-    return {field.name: getattr(obj, field.name) for field in fields(obj)}
-
-
-@dataclass(frozen=True, slots=True)
-class EnvironmentState:
-    """All relevant environment state.
-
-    Attributes:
-        score_prior_to_turn: Player's score prior to this turn.
-        score_so_far_this_turn: The current score accumulated this turn,
-            excluding the current roll.
-        potential_hold_score: The score that will be yielded from holding the
-            current roll.
-        roll: Dice available to select.
-        frozen: Dice that have been held so far.
-        max_other_player_score: Max score of other player. Used to deduce how
-            close we are to the game ending. This gives bots the ability to
-            make riskier moves towards the game's conclusion.
-    """
-
-    score_prior_to_turn: int
-    score_so_far_this_turn: int
-    potential_hold_score: int
-    roll: RollStruct
-    frozen: RollArrayType
-    scoring_mask: MaskType
-    max_other_player_score: int
-
-    @classmethod
-    def from_turn(cls, turn: Turn) -> EnvironmentState:
-        """Create environment dynamically from core assets.
-
-        Gather data from this game and turn for a specific player.
-
-        Args:
-            game: Current game
-            player_id: Current player's ID.
-            turn: Player's turn. Should be in ``SELECTION`` state.
-        """
-        if turn.state != TurnState.SELECTION:
-            raise TurnStateError(
-                "Must be in SELECTION state to create bot environment state"
-            )
-        game = turn.game
-        player_id = turn.player_id
-        score_so_far_this_turn = turn.value
-        potential_hold_score = turn.curr_value + score_so_far_this_turn
-        scoring_mask = turn.curr_scoring_mask
-        roll = turn.curr_roll
-        frozen = turn.frozen
-        if game and player_id is not None:
-            score_prior_to_turn = game.player_score_map[player_id]
-            max_other_player_score = max(
-                v for id, v in game.player_score_map.items() if id != player_id
-            )
-        else:
-            score_prior_to_turn = max_other_player_score = 0
-        return cls(
-            score_prior_to_turn=score_prior_to_turn,
-            score_so_far_this_turn=score_so_far_this_turn,
-            potential_hold_score=potential_hold_score,
-            roll=roll,
-            frozen=frozen,
-            scoring_mask=scoring_mask,
-            max_other_player_score=max_other_player_score,
-        )
-
-    def copy_with_updates(self, **kwargs) -> EnvironmentState:
-        other_dict = _dataclass_asdict_shallow(self)
-        other_dict.update(kwargs)
-        return EnvironmentState(**other_dict)
-
-
-@dataclass(frozen=True, slots=True)
-class Action:
-    """Represents a game action.
-
-    Attributes:
-        mask: Mask for current roll. Should match shape of
-            ``EnvironmentState.roll.shape``, with ``True``s for the dice to
-            hold and ``False``s for dice staged for another roll.
-        hold: Flag that indicates that the user will stop rolling and keep
-            current score.
-    """
-
-    mask: MaskType | None
-    hold: bool
-
-    def __eq__(self, other: Any) -> bool:
-        if isinstance(other, Action):
-            if self.hold:
-                return other.hold
-            return (
-                other.mask is not None
-                and self.mask is not None
-                and np.array_equal(self.mask, other.mask)
-            )
-        return False
-
-    __hash__ = None
-
-
-class BotPlayer(metaclass=ABCMeta):
-    """Abstract base class for programmatic game players (aka bots).
-
-    Bots, both deterministic and statistical, should inherit from this super
-    class.
-    """
-
-    @abstractmethod
-    def action(self, state: EnvironmentState) -> Action:
-        """Mechanism through which the bot interacts with environment.
-
-        Bot receives data about the current state of the game as and returns
-        its decided action based on this data.
-
-        Args:
-            state: Current state of the game.
-
-        Returns:
-            Action: The action the bot has selected.
-        """
-
-
-class DeterministicBotPlayer(BotPlayer):
+class DeterministicBotPlayer(BasePlayer):
     """Simple threshold-based bot.
 
     This bot always plays based on the score accumulated so far this turn. If

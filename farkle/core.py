@@ -1,11 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from abc import ABCMeta, abstractmethod
+from dataclasses import (
+    dataclass,
+    field,
+    replace,
+)
 from enum import Enum, auto
 from functools import wraps
 from itertools import cycle
 import logging
 from typing import (
+    TYPE_CHECKING,
+    Any,
     Callable,
     Concatenate,
     Final,
@@ -17,14 +24,17 @@ from typing import (
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
 MaskType = NDArray[np.bool_]
 RollArrayType = NDArray[np.uint8]
 
 _KEEP_ALL = np.array([True] * 6)
 
 
-@dataclass(frozen=True)
-class RollStruct:
+@dataclass(frozen=True, slots=True)
+class Roll:
     """Represents a roll of N (``shape``) dice.
 
     Dataclass representing a single roll of multiple dice in the game. In
@@ -37,16 +47,32 @@ class RollStruct:
         last_n: The value of the highest rolled value. Equivalent to the value
             that is represents the last index of ``counts``.
         shape: The number of dice that were rolled. Must be in ``[1, 6]``.
+        score: Score yielded from the roll.
+        scoring_mask: A boolean array that indicates which dice are scoring and
+            which are not.
     """
 
     roll_array: RollArrayType
     counts: list[int]
     last_n: int
     shape: int
+    score: int = field(init=False)
+    scoring_mask: MaskType = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Add scoring information to dataclass.
+
+        Depends on other variables so constructed post init.
+        """
+        score, scoring_mask = self._score()
+        # Because the object is "immutable" we have to use object's setattr
+        # call. This has a performance impact at creation time.
+        object.__setattr__(self, "score", score)
+        object.__setattr__(self, "scoring_mask", scoring_mask)
 
     @classmethod
-    def fixed(cls, roll: ArrayLike) -> RollStruct:
-        """Create a ``RollStruct`` from a specific set of values.
+    def fixed(cls, roll: ArrayLike) -> Roll:
+        """Create a ``Roll`` from a specific set of values.
 
         This is used for fixing a specific combination of values as a roll,
         and calculating the metadata implicitly.
@@ -55,7 +81,7 @@ class RollStruct:
             roll (array-like): The selected roll.
 
         Returns:
-            RollStruct: Object representing roll.
+            Roll: Object representing roll.
         """
         roll = np.array(roll, dtype=np.uint8)
 
@@ -75,28 +101,31 @@ class RollStruct:
         return cls(roll, counts, last_n, roll.shape[0])
 
     @classmethod
-    def random(cls, shape: int = 6) -> RollStruct:
+    def random(cls, shape: int = 6) -> Roll:
         """Simulate a roll.
 
-        Create a random roll wrapped in a ``RollStruct``.
+        Create a random roll wrapped in a ``Roll``.
 
         Args:
             shape: Number of dice to roll.
 
         Returns:
-            RollStruct: Object representing roll.
+            Roll: Object representing roll.
         """
         roll = np.random.randint(1, 7, size=shape)
         return cls.fixed(roll)
 
-    def subroll(self, mask: NDArray[np.bool_]) -> RollStruct:
+    def is_farkle(self) -> bool:
+        return self.score == 0
+
+    def subset(self, mask: NDArray[np.bool_]) -> Roll:
         """Create a new object from a subset of this object."""
-        return RollStruct.fixed(self.roll_array[mask])
+        return Roll.fixed(self.roll_array[mask])
 
-    def score(self) -> tuple[int, MaskType]:
-        """Calculate score and mask for a given ``RollStruct``.
+    def _score(self) -> tuple[int, MaskType]:
+        """Calculate score and mask.
 
-        Use ``RollStruct`` metadata to calculate the score and choose which
+        Use ``Roll`` metadata to calculate the score and choose which
         dice to hold that maximizes our score. The different scoring patterns
         are represented as blocks in the match-case below.
 
@@ -143,40 +172,40 @@ class RollStruct:
             return value, keep
 
         match self:
-            case RollStruct(roll, [6], scoring_n):
+            case Roll(roll, [6], scoring_n):
                 """Six of a kind"""
                 return 3000, _KEEP_ALL
 
-            case RollStruct(roll, [*_, 5], scoring_n):
+            case Roll(roll, [*_, 5], scoring_n):
                 """Five of a kind"""
                 keep = roll == scoring_n
                 value, keep = update_with_scoring_singles(roll, 2000, keep)
                 return value, keep
 
-            case RollStruct(roll, [2, 4], scoring_n):
+            case Roll(roll, [2, 4], scoring_n):
                 """Four of a kind + a pair"""
                 return 1500, _KEEP_ALL
 
-            case RollStruct(roll, [1, 1, 1, 1, 1, 1], scoring_n):
+            case Roll(roll, [1, 1, 1, 1, 1, 1], scoring_n):
                 """Straight"""
                 return 1500, _KEEP_ALL
 
-            case RollStruct(roll, [*_, 4], scoring_n):
+            case Roll(roll, [*_, 4], scoring_n):
                 """Four of a kind"""
                 keep = roll == scoring_n
                 # Check if remainder is scoring
                 value, keep = update_with_scoring_singles(roll, 1000, keep)
                 return value, keep
 
-            case RollStruct(roll, [3, 3], scoring_n):
+            case Roll(roll, [3, 3], scoring_n):
                 """Two triplets"""
                 return 2500, _KEEP_ALL
 
-            case RollStruct(roll, [2, 2, 2], scoring_n):
+            case Roll(roll, [2, 2, 2], scoring_n):
                 """Three pairs"""
                 return 1500, _KEEP_ALL
 
-            case RollStruct(roll, [*_, 3], scoring_n) if scoring_n > 1:
+            case Roll(roll, [*_, 3], scoring_n) if scoring_n > 1:
                 """Three of a kind (for numbers greater than one)"""
                 value = scoring_n * 100
                 keep = roll == scoring_n
@@ -184,14 +213,13 @@ class RollStruct:
                 value, keep = update_with_scoring_singles(roll, value, keep)
                 return value, keep
 
-            case RollStruct(roll, _):
+            case Roll(roll, _):
                 """Scoring numbers: Ones and fives"""
                 keep_none = np.array([False] * self.shape)
                 return update_with_scoring_singles(roll, 0, keep_none)
 
         raise RuntimeError(  # pragma: no cover
-            "Unexpected error encountered during scoring! "
-            "Unable to score RollStruct."
+            "Unexpected error encountered during scoring! Unable to score Roll."
         )
 
 
@@ -209,10 +237,8 @@ class TurnState(Enum):
     Represents the possible states of a ``Turn`` object.
     """
 
-    ROLL = auto()
-    """Waiting for user to roll."""
-    SELECTION = auto()
-    """Waiting for user to select."""
+    PLAYING = auto()
+    """Play is still active."""
     FARKLE = auto()
     """Non-scoring roll ends turn."""
     HOLD = auto()
@@ -222,7 +248,7 @@ class TurnState(Enum):
 
     def is_terminal(self):
         """Can state be updated after reaching this state."""
-        return self in (TurnState.FARKLE, TurnState.HOLD, TurnState.ERROR)
+        return self is not TurnState.PLAYING
 
     def assert_state(
         self, func: Callable[Concatenate[Turn, _Param], _RetType]
@@ -244,23 +270,64 @@ class TurnState(Enum):
         return wrapper
 
 
+RollFactoryType = Callable[[int], Roll]
+
+
+class BaseRollFactory(metaclass=ABCMeta):
+    """Gives next roll.
+
+    Keeps track of state between rolls and gives next roll when called. Used
+    for roll dependency injection into Turn.
+    """
+
+    @abstractmethod
+    def __call__(self, open_spots: int) -> Roll:
+        """Get next roll, given internal state and number of open spots."""
+
+
+class NumpyRandomRollFactory(BaseRollFactory):
+    """Stateless roll, getting next roll from ``Roll``'s numpy based random
+    selection.
+    """
+
+    def __call__(self, open_spots: int) -> Roll:
+        return Roll.random(open_spots)
+
+
+class FixedRollFactory(BaseRollFactory):
+    """Stateful roll incrementor that passes whatever the last roll that was
+    sent.
+
+    Used for testing and debugging.
+    """
+
+    next_roll: Roll
+
+    def __init__(self, seed_roll: Roll) -> None:
+        self.next_roll = seed_roll
+
+    def set_next_roll(self, roll: Roll) -> None:
+        """Fix the upcoming roll."""
+        self.next_roll = roll
+
+    def __call__(self, _: int) -> Roll:
+        return self.next_roll
+
+
 class Turn:
     """Turn in Farkle game.
 
     Interactive, stateful representation of a turn in a game. One object should
-    be generated per turn, and mutated as the turn evolves, eventually landing
-    in a terminal state such as "hold" or "farkle".
+    be generated per turn, and mutated as the turn evolves through ``select``
+    calls, eventually landing in a terminal state such as "hold" or "farkle".
 
     You may notice that most functions return ``None``. This object is designed
-    to change state through the methods, then let the caller reference the
-    information as attributes rather than returning an arbitrary set of
-    information.
+    to be a state machine. The caller can reference the information as attributes
+    rather than returning an arbitrary set of information.
 
     Args:
-        game: Optional parameter to track the game this turn is a part of. This
-            is managed programmatically. Do not update directly.
-        player_id: Optional Player ID this turn belongs to. This is managed
-            programmatically. Do not update directly.
+        roll_factory: Optional parameter to specify a factory from which rolls
+            will be generated.
 
     Attributes:
         frozen (array of int): Which dice have been scored, added to ``value``,
@@ -268,23 +335,16 @@ class Turn:
         value: Total value accumulated during turn.
         state: The current ``TurnState``.
         open_spots (int): Number of non-frozen dice to roll.
-        curr_roll: The current state of un-frozen dice.
-        curr_value: The value of the current, un-frozen roll.
-        curr_scoring_mask: A boolean mask of scoring values within current
-            roll.
+        roll: The current un-frozen dice.
     """
 
-    curr_roll: RollStruct
-    curr_value: int
-    curr_scoring_mask: MaskType
-
-    def __init__(self, game: Game | None = None, player_id: int | None = None) -> None:
-        self.game = game
-        self.player_id = player_id
-        self.frozen: RollArrayType = np.zeros((6,), dtype=np.uint8)
-        self.value: int = 0
-        self._state: TurnState = TurnState.ROLL
+    def __init__(self, *, roll_factory: RollFactoryType | None = None) -> None:
         self._logger = logging.getLogger(__name__)
+        self.frozen: RollArrayType = np.zeros((6,), dtype=np.uint8)
+        self.score: int = 0
+        self._state: TurnState = TurnState.PLAYING
+        self._roll_factory = roll_factory or NumpyRandomRollFactory()
+        self._update_roll()
 
     @property
     def state(self) -> TurnState:
@@ -297,62 +357,59 @@ class Turn:
             raise TurnStateError(
                 f"Cannot change state from terminal state: {self.state}"
             )
-        self._logger.debug(f"Changing state: {self.state} → {value}")
+        self._logger.debug("Changing state: %s → %s", self.state, value)
         self._state = value
 
     @property
     def open_spots(self) -> int:
         return (self.frozen == 0).sum()
 
-    @TurnState.ROLL.assert_state
-    def roll(self, fixed: RollStruct | None = None) -> None:
+    def is_active(self) -> bool:
+        """Is the turn still in a playable state?"""
+        return self.state is TurnState.PLAYING
+
+    def _update_roll(self) -> None:
         """Roll the dice!
 
-        Rolls all un-frozen dice and updates state to ``SELECTION`` state. Can
-        only be run when in ``ROLL`` state. Updates ``curr_`` prefixed attributes.
+        Rolls all un-frozen dice and updates ``roll`` attribute.
 
         Args:
             fixed: Pass a preset roll to the roll for testing.
         """
         try:
-            self.curr_roll = fixed or RollStruct.random(self.open_spots)
-            self.curr_value, self.curr_scoring_mask = self.curr_roll.score()
+            self.roll = self._roll_factory(self.open_spots)
+            self._logger.debug("Rolling: New roll = %s", self.roll)
 
-            if self.curr_value == 0:
+            if self.roll.is_farkle():
                 self.state = TurnState.FARKLE
-            else:
-                self.state = TurnState.SELECTION
-            self._logger.debug(
-                f"Rolled new: \n{self.curr_roll=}; "
-                f"\n{self.curr_value=}; {self.curr_scoring_mask}"
-            )
+                self.score = 0
         except Exception:
             self._logger.exception("Unexpected error during roll: closing turn.")
             self.state = TurnState.ERROR
 
-    @TurnState.SELECTION.assert_state
+    @TurnState.PLAYING.assert_state
     def select(self, mask: MaskType | None = None) -> None:
         """Select scoring dice to freeze, with an intent to continue scoring.
 
         This is the selection phase of the turn, where the user has rolled and
         decides which dice to hold and which to make available for re-rolling.
-        The object must be in the ``SELECTION`` state to execute, while doing
-        so puts the object in the ``ROLL`` phase.
+        The object must be in the ``PLAYING`` state to execute.
 
         Args:
             mask: Optional boolean mask of which dice to keep. Defaults to
-            scoring dice captured in ``RollStruct.score``.
+                scoring dice captured in ``Roll.scoring_mask``.
         """
-        mask = mask if mask is not None else self.curr_scoring_mask
-        if np.any(mask & ~self.curr_scoring_mask):
+        mask = mask if mask is not None else self.roll.scoring_mask
+        if np.any(mask & ~self.roll.scoring_mask):
             raise ValueError("Tried to select non-scoring di(c)e")
         if mask.size != self.open_spots:
             raise ValueError("Mask size must be same as number of open spots")
+        if mask.sum() < 1:
+            raise ValueError("No selection made, must choose at least one to keep.")
         try:
-            self._logger.debug(f"Selecting: {mask=} from {self.curr_roll=}")
-            masked_roll = self.curr_roll.subroll(mask)
-            masked_score, masked_keep = masked_roll.score()
-            self.value += masked_score
+            self._logger.debug("Selecting: mask=%s from %s", mask, self.roll)
+            masked_roll = self.roll.subset(mask)
+            self.score += masked_roll.score
 
             if np.all(mask):
                 self._refresh_frozen()
@@ -362,8 +419,9 @@ class Turn:
                 open_spots[open_spots] = open_spots[open_spots] & mask
                 self.frozen[open_spots] = kept_from_roll
 
-            self._logger.debug(f"New score: {self.value=}")
-            self.state = TurnState.ROLL
+            self._logger.debug("New score: %s", self.score)
+
+            self._update_roll()
         except Exception:
             self._logger.exception("Unexpected error during select: closing turn.")
             self.state = TurnState.ERROR
@@ -377,27 +435,7 @@ class Turn:
         """
         self.frozen[:] = 0
 
-    @TurnState.SELECTION.assert_state
-    def check_mask(self, mask: MaskType | None = None) -> tuple[int, MaskType]:
-        """Check the score of a mask without changing state.
-
-        This is optionally used to interactively test different combinations as
-        the user selects them in a UI.
-
-        Args:
-            mask: Mask to check score from current roll.
-
-        Returns:
-            int: Score of selection.
-            mask: The scoring subset of the mask.
-        """
-        roll = self.curr_roll
-        if mask is not None:
-            roll = self.curr_roll.subroll(mask)
-        value, keep = roll.score()
-        return value, keep
-
-    @TurnState.SELECTION.assert_state
+    @TurnState.PLAYING.assert_state
     def hold(self) -> None:
         """Gracelly end turn, keeping score.
 
@@ -405,8 +443,138 @@ class Turn:
         other outcome is a "farkle" which yields zero points from the entire
         turn.
         """
-        self.value += self.curr_value
+        self.score += self.roll.score
         self.state = TurnState.HOLD
+
+
+@dataclass(frozen=True, slots=True)
+class EnvironmentState:
+    """All relevant environment state.
+
+    Attributes:
+        score_prior_to_turn: Player's score prior to this turn.
+        score_so_far_this_turn: The current score accumulated this turn,
+            excluding the current roll.
+        potential_hold_score: The score that will be yielded from holding the
+            current roll.
+        roll: Dice available to select.
+        frozen: Dice that have been held so far.
+        max_other_player_score: Max score of other player. Used to deduce how
+            close we are to the game ending. This gives bots the ability to
+            make riskier moves towards the game's conclusion.
+    """
+
+    score_prior_to_turn: int
+    score_so_far_this_turn: int
+    potential_hold_score: int
+    roll: Roll
+    frozen: RollArrayType
+    scoring_mask: MaskType
+    max_other_player_score: int
+
+    @classmethod
+    def from_turn(cls, turn: Turn, game_state: dict[str, Any]) -> EnvironmentState:
+        """Create environment dynamically from core assets.
+
+        Gather data from this game and turn for a specific player.
+
+        Args:
+            turn: Current game
+            game_state: arbitrary metadata about game that is set from game.
+        """
+        if turn.state != TurnState.PLAYING:
+            raise TurnStateError(
+                "Must be in SELECTION state to create bot environment state"
+            )
+        score_so_far_this_turn = turn.score
+        potential_hold_score = turn.roll.score + score_so_far_this_turn
+        scoring_mask = turn.roll.scoring_mask
+        roll = turn.roll
+        frozen = turn.frozen
+        score_prior_to_turn = game_state.get("score_prior_to_turn", 0)
+        max_other_player_score = game_state.get("max_other_player_score", 0)
+
+        return cls(
+            score_prior_to_turn=score_prior_to_turn,
+            score_so_far_this_turn=score_so_far_this_turn,
+            potential_hold_score=potential_hold_score,
+            roll=roll,
+            frozen=frozen,
+            scoring_mask=scoring_mask,
+            max_other_player_score=max_other_player_score,
+        )
+
+    def copy_with_updates(self, **kwargs) -> EnvironmentState:
+        return replace(self, **kwargs)
+
+
+@dataclass(frozen=True, slots=True, unsafe_hash=True)
+class Action:
+    """Represents a game action.
+
+    Attributes:
+        mask: Mask for current roll. Should match shape of
+            ``EnvironmentState.roll.shape``, with ``True``s for the dice to
+            hold and ``False``s for dice staged for another roll.
+        hold: Flag that indicates that the user will stop rolling and keep
+            current score.
+    """
+
+    mask: MaskType | None
+    hold: bool
+
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, Action):
+            # TODO: This is overcomplicated
+            if self.hold is not other.hold:
+                return False
+            if self.mask is None:
+                return other.mask is None
+            return other.mask is not None and np.array_equal(self.mask, other.mask)
+        return False
+
+
+class BasePlayer(metaclass=ABCMeta):
+    """Abstract base class for game players."""
+
+    score: int
+    name: str
+
+    @abstractmethod
+    def action(self, state: EnvironmentState) -> Action:
+        """Mechanism through which the bot interacts with environment.
+
+        Bot receives data about the current state of the game as and returns
+        its decided action based on this data.
+
+        Args:
+            state: Current state of the game.
+
+        Returns:
+            Action: The action the bot has selected.
+        """
+
+    def handle_turn_generator(
+        self, turn: Turn, game_state: dict
+    ) -> Generator[EnvironmentState, Action, None]:
+        """Loop through turn and take actions until turn ends.
+
+        Iterate over the rolling rounds in a turn and take actions that are
+        defined by ``.action`` until the turn ends in either a Farkle or a
+        "hold". The turn iterates as a generator, sending state and potentially
+        receiving an overriding action. The latter should only be used for
+        debugging.
+        """
+        while turn.is_active():
+            state = EnvironmentState.from_turn(turn, game_state)
+            action = self.action(state)
+            received_action = yield state
+            action = received_action or action
+            if action.hold:
+                turn.hold()
+            else:
+                turn.select(action.mask)
+        self.score += turn.score
 
 
 class Game:
@@ -418,33 +586,46 @@ class Game:
     beating them.
 
     Args:
-        num_players: Number of players to cycle through
+        players: Sequence of player objects.
 
     Attributes:
-        turn_cycler: Iterates through player ids.
-        player_score_map: Stores player scores by id.
+        players: Sequence of player objects.
+        players_cycler: Endlessly iterates through player ids.
     """
 
     WINNING_SCORE: Final = 10_000
     """Threshold at which the end-game begins."""
 
-    def __init__(self, num_players: int) -> None:
-        player_range = range(num_players)
-        self.num_players = num_players
-        self.turn_cycler: cycle = cycle(player_range)
-        self.player_score_map: dict[int, int] = {i: 0 for i in player_range}
+    def __init__(self, players: Sequence[BasePlayer]) -> None:
+        self.players = players
+        self.player_cycler: cycle = cycle(players)
         self._logger = logging.getLogger(__name__)
 
-    def start(self) -> Generator[Turn, None, None]:
-        winning_id = -1
-        for player_id in self.turn_cycler:
-            if player_id == winning_id:  # pragma: no cover
+    def game_state(self, current_player: BasePlayer) -> dict[str, int]:
+        if len(self.players) > 1:
+            max_other_player_score = max(
+                p.score for p in self.players if p is not current_player
+            )
+        else:
+            max_other_player_score = 0
+        return {
+            "max_other_player_score": max_other_player_score,
+            "score_prior_to_turn": current_player.score,
+        }
+
+    def play_generator(self) -> Generator[EnvironmentState, Action, None]:
+        is_endgame = False
+        for player in self.player_cycler:
+            if is_endgame:  # pragma: no cover
                 return
 
-            self._logger.debug(f"Starting turn for {player_id=}")
-            turn = Turn(game=self, player_id=player_id)
-            yield turn
-            self._logger.debug(f"Closing turn for {player_id=}")
+            self._logger.debug(f"Starting turn for {player}: starting {player.score=}")
+            turn = Turn()
+            game_state = self.game_state(player)
+            handled_turn = player.handle_turn_generator(turn, game_state)
+            yield from handled_turn
+
+            self._logger.debug(f"Closing turn for {player}: ending {player.score=}")
 
             if not turn.state.is_terminal():
                 self._logger.critical(
@@ -453,12 +634,10 @@ class Game:
                 )
                 turn.state = TurnState.ERROR
 
-            self.player_score_map[player_id] += turn.value
-
             # If someone reaches 10,000 everyone gets one last turn to try to beat it
-            if self.player_score_map[player_id] >= Game.WINNING_SCORE:
-                winning_id = player_id
+            if player.score >= Game.WINNING_SCORE:
+                is_endgame = True
 
-            # Every complete loop, we log the current scores to DEBUG
-            if player_id == self.num_players - 1:
-                self._logger.debug(f"Current scores: {self.player_score_map}")
+    def play(self) -> None:
+        for _ in self.play_generator():
+            continue
