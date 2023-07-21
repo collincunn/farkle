@@ -368,7 +368,7 @@ class Turn:
         """Is the turn still in a playable state?"""
         return self.state is TurnState.PLAYING
 
-    def _update_roll(self, fixed: Roll | None = None) -> None:
+    def _update_roll(self) -> None:
         """Roll the dice!
 
         Rolls all un-frozen dice and updates ``roll`` attribute.
