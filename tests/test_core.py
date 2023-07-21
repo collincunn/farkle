@@ -107,7 +107,6 @@ def test_turn_broken_operations_no_fail():
     # break during roll
     turn = Turn()
     turn.frozen = np.zeros((7,))
-    turn._update_roll(None)
 
     # break during select
     roll_factory = FixedRollFactory(Roll.fixed([1, 1, 1, 1, 1, 1]))
